@@ -1,107 +1,84 @@
-# 🖐️ Hand Gesture Mouse Control
+# Hand Gesture Mouse Control
 
-### Real-Time Computer Vision System using MediaPipe + OpenCV
+A real-time computer vision project that lets you control the mouse pointer using hand gestures captured through a webcam. The application uses MediaPipe for hand landmark detection, OpenCV for video processing, and PyAutoGUI for mouse control.
 
-Control your computer mouse using just your hand — no additional hardware required.
-This project leverages **MediaPipe**, **OpenCV**, and **PyAutoGUI** to enable intuitive, real-time human-computer interaction.
+## Features
 
----
+- Move the cursor with the index finger.
+- Perform left clicks using a thumb-and-index pinch gesture.
+- Scroll using index and middle finger positioning.
+- Smooth cursor movement to reduce tracking jitter.
+- On-screen preview with hand landmarks and status feedback.
+- Safe cleanup for camera and OpenCV windows when the app exits.
 
-## 🚀 Features
+## Tech Stack
 
-* 🎯 Smooth and stable cursor movement
-* 🤏 Click using pinch gesture (thumb + index finger)
-* 📜 Scroll using finger gestures
-* ⚡ Real-time performance with low latency
-* 🧠 ML-powered hand landmark detection (MediaPipe)
-* 🧼 Cursor smoothing to reduce jitter
+- Python
+- OpenCV
+- MediaPipe
+- PyAutoGUI
 
----
+## Project Structure
 
-## 🛠️ Tech Stack
+```text
+ai-gesture-mouse-control/
+|-- main.py
+|-- requirements.txt
+|-- README.md
+|-- .gitignore
+```
 
-* Python
-* OpenCV
-* MediaPipe
-* PyAutoGUI
-
----
-
-## 📂 Project Structure
-
-hand-gesture-mouse-control/
-│── main.py
-│── requirements.txt
-│── README.md
-
----
-
-## ▶️ Installation & Usage
+## Installation
 
 ```bash
-git clone https://github.com/sakthi-2003/hand-gesture-mouse-control.git
-cd hand-gesture-mouse-control
-
+git clone https://github.com/sakthi-2003/ai-gesture-mouse-control.git
+cd ai-gesture-mouse-control
 pip install -r requirements.txt
+```
+
+## Usage
+
+```bash
 python main.py
 ```
 
----
+Allow webcam access when prompted. A preview window will open after the camera starts.
 
-## 🎮 Gesture Controls
+## Gesture Controls
 
-| Gesture                  | Action      |
-| ------------------------ | ----------- |
-| ☝️ Index Finger          | Move Cursor |
-| 🤏 Thumb + Index (Pinch) | Left Click  |
-| ✌️ Two Fingers           | Scroll      |
+| Gesture | Action |
+| --- | --- |
+| Index finger movement | Move cursor |
+| Thumb + index pinch | Left click |
+| Index and middle finger vertical movement | Scroll |
+| Q or Esc key | Exit application |
 
----
+## How It Works
 
-## 🧠 How It Works
+1. OpenCV captures frames from the webcam.
+2. MediaPipe detects hand landmarks in each frame.
+3. The index finger landmark is mapped to screen coordinates.
+4. A smoothing function reduces pointer jitter.
+5. The distance between thumb and index finger triggers clicks.
+6. Index and middle finger positions are used for scrolling.
 
-* MediaPipe detects **21 hand landmarks** in real time
-* Index finger tip controls cursor movement
-* Distance between thumb and index finger detects click
-* Finger positions control scrolling
-* Smoothing reduces jitter for stability
+## Requirements
 
----
+Install dependencies from `requirements.txt`:
 
-## 📸 Demo
+```bash
+opencv-python
+mediapipe
+pyautogui
+```
 
-👉 Add a demo GIF here (record using OBS + upload)
+## Future Improvements
 
----
+- Add drag-and-drop gesture support.
+- Add gesture-based mode switching.
+- Add a demo GIF or screenshot.
+- Add configurable sensitivity and gesture thresholds.
 
-## 🌟 Future Improvements
-
-* Drag & Drop gesture
-* Gesture-based mode switching
-* GUI overlay
-* Deep learning gesture classification
-
----
-
-## 🤝 Contributing
-
-Pull requests are welcome!
-
----
-
-## ⭐ Project Value
-
-This project demonstrates:
-
-* Real-time Computer Vision
-* ML-based hand tracking
-* Human-computer interaction
-* System optimization
-
----
-
-## 🔥 Author
+## Author
 
 Sakthi
-
-⭐ If you like this project, give it a star!
