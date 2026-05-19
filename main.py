@@ -1,70 +1,199 @@
+"""Hand gesture mouse controller using OpenCV, MediaPipe, and PyAutoGUI."""
+
+from __future__ import annotations
+
+import math
+import time
+from dataclasses import dataclass
+
 import cv2
 import mediapipe as mp
 import pyautogui
-import math
-
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(max_num_hands=1)
-mp_draw = mp.solutions.drawing_utils
-
-screen_w, screen_h = pyautogui.size()
-cap = cv2.VideoCapture(0)
-
-prev_x, prev_y = 0, 0
-smoothening = 5
 
 
-def distance(p1, p2):
-    return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+CAMERA_INDEX = 0
+MAX_NUM_HANDS = 1
+DETECTION_CONFIDENCE = 0.7
+TRACKING_CONFIDENCE = 0.7
+CLICK_DISTANCE_PIXELS = 35
+CLICK_COOLDOWN_SECONDS = 0.35
+SCROLL_DISTANCE_PIXELS = 45
+SCROLL_COOLDOWN_SECONDS = 0.08
+SCROLL_AMOUNT = 5
+POINTER_SMOOTHING = 0.25
+WINDOW_NAME = "Hand Gesture Mouse Control"
 
-while True:
-    success, img = cap.read()
-    img = cv2.flip(img, 1)
-    h, w, _ = img.shape
 
-    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    result = hands.process(rgb)
+@dataclass
+class Point:
+    x: int
+    y: int
 
-    if result.multi_hand_landmarks:
-        for handLms in result.multi_hand_landmarks:
-            lm_list = []
 
-            for id, lm in enumerate(handLms.landmark):
-                cx, cy = int(lm.x * w), int(lm.y * h)
-                lm_list.append((id, cx, cy))
+def calculate_distance(first: Point, second: Point) -> float:
+    """Return the Euclidean distance between two image points."""
+    return math.hypot(second.x - first.x, second.y - first.y)
 
-            if lm_list:
-                x1, y1 = lm_list[8][1:]  # index tip
-                x2, y2 = lm_list[4][1:]  # thumb tip
 
-                screen_x = screen_w * (x1 / w)
-                screen_y = screen_h * (y1 / h)
+def landmark_to_point(landmark, frame_width: int, frame_height: int) -> Point:
+    """Convert a normalized MediaPipe landmark to a pixel coordinate."""
+    return Point(
+        x=int(landmark.x * frame_width),
+        y=int(landmark.y * frame_height),
+    )
 
-                # Smooth movement
-                curr_x = prev_x + (screen_x - prev_x) / smoothening
-                curr_y = prev_y + (screen_y - prev_y) / smoothening
 
-                pyautogui.moveTo(curr_x, curr_y)
-                prev_x, prev_y = curr_x, curr_y
+def map_to_screen(point: Point, frame_width: int, frame_height: int) -> Point:
+    """Map a camera-frame point to the current screen resolution."""
+    screen_width, screen_height = pyautogui.size()
+    return Point(
+        x=int(screen_width * point.x / frame_width),
+        y=int(screen_height * point.y / frame_height),
+    )
 
-                # Click gesture (pinch)
-                if distance((x1, y1), (x2, y2)) < 30:
-                    pyautogui.click()
 
-                # Scroll gesture (two fingers up)
-                y_middle = lm_list[12][2]
-                if abs(y_middle - y1) > 40:
-                    pyautogui.scroll(20 if y_middle < y1 else -20)
+def smooth_pointer(target: Point, previous: Point | None) -> Point:
+    """Smooth pointer movement to reduce jitter from hand tracking noise."""
+    if previous is None:
+        return target
 
-                cv2.circle(img, (x1, y1), 10, (255, 0, 255), cv2.FILLED)
-                cv2.circle(img, (x2, y2), 10, (0, 255, 0), cv2.FILLED)
+    return Point(
+        x=int(previous.x + (target.x - previous.x) * POINTER_SMOOTHING),
+        y=int(previous.y + (target.y - previous.y) * POINTER_SMOOTHING),
+    )
 
-            mp_draw.draw_landmarks(img, handLms, mp_hands.HAND_CONNECTIONS)
 
-    cv2.imshow("Hand Control", img)
+def draw_overlay(frame, index_tip: Point | None, is_clicking: bool) -> None:
+    """Draw concise status information on the preview window."""
+    status = "Click" if is_clicking else "Move"
+    color = (0, 200, 0) if is_clicking else (255, 170, 0)
 
-    if cv2.waitKey(1) & 0xFF == 27:
-        break
+    cv2.putText(
+        frame,
+        "Pinch thumb + index to click | Press Q to quit",
+        (20, 32),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        frame,
+        f"Mode: {status}",
+        (20, 64),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        color,
+        2,
+        cv2.LINE_AA,
+    )
 
-cap.release()
-cv2.destroyAllWindows()
+    if index_tip is not None:
+        cv2.circle(frame, (index_tip.x, index_tip.y), 10, color, cv2.FILLED)
+
+
+def run_mouse_controller() -> None:
+    """Start the camera loop and control the mouse from hand landmarks."""
+    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE = 0
+
+    mp_hands = mp.solutions.hands
+    mp_draw = mp.solutions.drawing_utils
+
+    cap = cv2.VideoCapture(CAMERA_INDEX)
+    if not cap.isOpened():
+        raise RuntimeError("Could not open the webcam. Check camera permissions.")
+
+    previous_pointer: Point | None = None
+    last_click_time = 0.0
+    last_scroll_time = 0.0
+
+    try:
+        with mp_hands.Hands(
+            static_image_mode=False,
+            max_num_hands=MAX_NUM_HANDS,
+            min_detection_confidence=DETECTION_CONFIDENCE,
+            min_tracking_confidence=TRACKING_CONFIDENCE,
+        ) as hands:
+            while True:
+                success, frame = cap.read()
+                if not success:
+                    break
+
+                frame = cv2.flip(frame, 1)
+                frame_height, frame_width, _ = frame.shape
+                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = hands.process(rgb_frame)
+
+                index_tip = None
+                is_clicking = False
+
+                if results.multi_hand_landmarks:
+                    hand_landmarks = results.multi_hand_landmarks[0]
+                    mp_draw.draw_landmarks(
+                        frame,
+                        hand_landmarks,
+                        mp_hands.HAND_CONNECTIONS,
+                    )
+
+                    landmarks = hand_landmarks.landmark
+                    index_tip = landmark_to_point(
+                        landmarks[mp_hands.HandLandmark.INDEX_FINGER_TIP],
+                        frame_width,
+                        frame_height,
+                    )
+                    thumb_tip = landmark_to_point(
+                        landmarks[mp_hands.HandLandmark.THUMB_TIP],
+                        frame_width,
+                        frame_height,
+                    )
+                    middle_tip = landmark_to_point(
+                        landmarks[mp_hands.HandLandmark.MIDDLE_FINGER_TIP],
+                        frame_width,
+                        frame_height,
+                    )
+
+                    pointer_target = map_to_screen(index_tip, frame_width, frame_height)
+                    pointer = smooth_pointer(pointer_target, previous_pointer)
+                    pyautogui.moveTo(pointer.x, pointer.y)
+                    previous_pointer = pointer
+
+                    pinch_distance = calculate_distance(index_tip, thumb_tip)
+                    now = time.monotonic()
+
+                    if (
+                        pinch_distance < CLICK_DISTANCE_PIXELS
+                        and now - last_click_time >= CLICK_COOLDOWN_SECONDS
+                    ):
+                        pyautogui.click()
+                        last_click_time = now
+                        is_clicking = True
+
+                    scroll_gap = middle_tip.y - index_tip.y
+                    if (
+                        not is_clicking
+                        and abs(scroll_gap) > SCROLL_DISTANCE_PIXELS
+                        and now - last_scroll_time >= SCROLL_COOLDOWN_SECONDS
+                    ):
+                        direction = 1 if scroll_gap < 0 else -1
+                        pyautogui.scroll(direction * SCROLL_AMOUNT)
+                        last_scroll_time = now
+
+                draw_overlay(frame, index_tip, is_clicking)
+                cv2.imshow(WINDOW_NAME, frame)
+
+                key = cv2.waitKey(1) & 0xFF
+                if key in (ord("q"), 27):
+                    break
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+def main() -> None:
+    run_mouse_controller()
+
+
+if __name__ == "__main__":
+    main()
