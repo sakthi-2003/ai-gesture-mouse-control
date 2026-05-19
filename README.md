@@ -25,6 +25,7 @@ ai-gesture-mouse-control/
 |-- main.py
 |-- requirements.txt
 |-- README.md
+|-- LICENSE
 |-- .gitignore
 ```
 
@@ -78,6 +79,10 @@ pyautogui
 - Add gesture-based mode switching.
 - Add a demo GIF or screenshot.
 - Add configurable sensitivity and gesture thresholds.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Author
 
